@@ -5,7 +5,8 @@ subprocess, connect an MCP client over stdio, list tools, call
 inspect_document on real files. Marked `com` (local runs, not CI).
 """
 
-import shutil
+import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -27,9 +28,11 @@ def demo_files():
 
 
 def _call_tool(path: Path) -> dict:
-    """Full MCP round trip: spawn server subprocess, initialize, call tool."""
-    import asyncio
+    """Full MCP round trip: spawn server subprocess, initialize, call tool.
 
+    The spawned server inherits this process's env — already sanitized by
+    tests/conftest.py (no PYTHONPATH poison reaches the child).
+    """
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
@@ -43,16 +46,12 @@ def _call_tool(path: Path) -> dict:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool("inspect_document", {"path": str(path)})
-                import json
-
                 return json.loads(result.content[0].text)
 
     return asyncio.run(asyncio.wait_for(_run(), timeout=120))
 
 
 def test_tools_listed(demo_files):
-    import asyncio
-
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 

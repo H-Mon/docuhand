@@ -29,6 +29,10 @@ packages = ["src/docuhand"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A poisoned global PYTHONPATH (this dev box injects a constrained virtualenv) makes
+# a foreign venv's packages shadow our own via sys.path; tests/conftest.py
+# scrubs env + sys.path before any test imports mcp. The `com` marker keeps
+# COM integration tests out of the default run (`-m com` opts in).
 addopts = '-m "not com"'
 markers = [
     "com: integration tests that drive real Word/WPS via COM (run locally with -m com, never in CI)",
