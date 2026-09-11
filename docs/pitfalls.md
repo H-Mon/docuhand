@@ -141,3 +141,17 @@ same call with an absolute path succeeds. Word tolerates relative paths;
 WPS does not. Rule: **`Path(...).expanduser().resolve()` every path at the
 engine boundary**, before it can reach COM. The server's cwd is an
 implementation detail the engine must never depend on.
+
+## 13. Old Office compat: a missing COM method raises AttributeError, not
+## TypeError
+
+`SaveAs2` did not exist before Word 2010. On a Word 2007 machine, late
+binding fails at **attribute access** with `AttributeError` — the call
+never happens, so a `TypeError`-shaped fallback net never fires and every
+conversion dies with OPEN_FAILED. Whenever you use a "modern" COM method
+with an old-engine fallback (`SaveAs2→SaveAs`, `ContentControls`→nothing,
+`OpenNoRepairDialog`→`Open`), the fallback must catch **both**
+`AttributeError` (method absent) and the arg-mismatch family (method
+present but rejects the signature). Many deployed machines still run
+routinely still run Win7 + Office 2007/2010 — treat 2007 as a supported
+floor until the field data says otherwise.
