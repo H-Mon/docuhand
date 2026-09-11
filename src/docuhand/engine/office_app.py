@@ -28,6 +28,7 @@ from ..errors import (
     OpenFailedError,
     PasswordProtectedError,
 )
+from .container_guard import validate_container
 
 # --- pure helpers (unit-testable, zero COM) -------------------------------
 
@@ -149,6 +150,44 @@ def _looks_like_arg_mismatch(exc: BaseException) -> bool:
     return isinstance(exc, TypeError) or "paramet" in str(exc).lower()
 
 
+# (Historical note: a "deliberately wrong PasswordDocument" guard passed to
+# Documents.Open kills the modal for *genuinely encrypted* files on Word —
+# but on WPS the dynamic dispatch explodes with AttributeError on the
+# unknown kwarg and takes the app object down (RPC_S_SERVER_UNAVAILABLE on
+# the next call). Not portable → not used. See docs/pitfalls.md #9.)
+
+
+def file_claims_encrypted(path: str) -> bool | None:
+    """Header sniff: can this file really be COM-password-encrypted?
+
+    True  → OLE2 with the FIB fEncrypted bit set: genuinely a password .doc.
+    False → container rules it out (plain zip can't be COM-encrypted): a
+            "password" error on it means the file is CORRUPT, not encrypted.
+    None  → OLE2 without the bit — could be a normal .doc or an encrypted
+            OOXML wrapper; treat encryption reports as genuine (safe default).
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(16)
+    except OSError:
+        return None
+    if head[:8] != OLE2_MAGIC:
+        return False
+    try:
+        flags = int.from_bytes(head[0x0A:0x0C], "little")
+        return bool(flags & 0x0001)
+    except Exception:
+        return None
+
+
+def engine_order_names() -> list[str]:
+    """Expose the probe order for tool payloads/tests (pure, no COM)."""
+    prefer = os.environ.get("DOCUHAND_ENGINE", "").strip().lower()
+    if prefer == "wps":
+        return ["wps", "word"]
+    return ["word", "wps"]
+
+
 # --- the engine ------------------------------------------------------------
 
 
@@ -211,8 +250,6 @@ class OfficeEngine:
         self._progid = progid
         return app
 
-    # -- the tool ----------------------------------------------------------
-
     def inspect_document(self, path: str) -> dict[str, Any]:
         t0 = time.perf_counter()
         p = Path(path).expanduser()
@@ -226,6 +263,11 @@ class OfficeEngine:
             )
 
         size = p.stat().st_size
+        # Pre-COM gate (same rationale as convert_document): a broken
+        # container can trigger a modal corrupt-file dialog in Word/WPS.
+        ok, reason = validate_container(str(p))
+        if not ok:
+            raise OpenFailedError(str(p), "container pre-check", f"structurally invalid container: {reason}")
         with open(p, "rb") as f:
             head = f.read(1024)
         detected = sniff_format(head)
@@ -280,6 +322,111 @@ class OfficeEngine:
             raise EngineUnavailableError(attempts)
         raise OpenFailedError(str(p), "word→wps failover exhausted", "; ".join(a["error"] for a in attempts))
 
+    # -- convert_document (D3–D5) -------------------------------------------
+
+    def convert_document(self, source: str, target: str, wd_format: int) -> dict[str, Any]:
+        """Convert one file via the real engine; source is never deleted.
+
+        Same failover contract as inspect_document: try the probe order;
+        an engine that dies mid-call is discarded and the next one takes
+        over. Runs on the COM STA (via ComWorker.submit) — never call
+        directly from the event loop.
+        """
+        t0 = time.perf_counter()
+        # Absolute paths are mandatory: WPS's Documents.Open fails with
+        # "文档打开失败" on relative paths even when the server cwd is right.
+        src = Path(source).expanduser().resolve()
+        dst = Path(target).expanduser().resolve()
+
+        if not src.exists():
+            raise FileNotFoundError(str(src))
+        # Pre-COM gate: a structurally broken container can pop a MODAL
+        # "file is corrupt" dialog inside Word/WPS (DisplayAlerts=0 does
+        # NOT suppress it). Reject it here, before any COM call.
+        ok, reason = validate_container(str(src))
+        if not ok:
+            raise OpenFailedError(
+                str(src),
+                "container pre-check",
+                f"structurally invalid container: {reason}",
+            )
+        if src.resolve() == dst.resolve():
+            raise DocuhandError(
+                f"Source and target are the same file: {src}",
+                llm_hint="convert_documents never overwrites its source; "
+                "this indicates an internal planning bug — report it.",
+                details={"path": str(src)},
+            )
+
+        order = self._engine_order()
+        attempts: list[dict[str, str]] = []
+        launch_failures = 0
+
+        for engine_name, progid in order:
+            try:
+                app = self._ensure_app(progid, engine_name)
+            except Exception as exc:
+                launch_failures += 1
+                attempts.append({"engine": engine_name, "stage": "launch", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+            try:
+                self._open_and_save_as(app, str(src), str(dst), wd_format)
+            except PasswordProtectedError:
+                raise
+            except Exception as exc:
+                attempts.append({"engine": engine_name, "stage": "convert", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+
+            return {
+                "ok": True,
+                "source": str(src),
+                "target": str(dst),
+                "engine": engine_name,
+                "duration_ms": round((time.perf_counter() - t0) * 1000),
+            }
+
+        if launch_failures == len(order):
+            raise EngineUnavailableError(attempts)
+        raise OpenFailedError(str(src), "word→wps failover exhausted", "; ".join(a["error"] for a in attempts))
+
+    def _open_and_save_as(self, app: Any, source: str, target: str, wd_format: int) -> None:
+        docs = app.Documents
+        try:
+            doc = docs.Open(
+                FileName=source,
+                ConfirmConversions=False,
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                Visible=False,
+            )
+        except Exception as exc:
+            if _looks_encrypted(exc):
+                # A "password" complaint is only trusted when the container
+                # can actually be COM-encrypted; otherwise it is Word's
+                # confused reaction to a corrupt file (its misclassification
+                # is what pops the password dialog we guard against).
+                if file_claims_encrypted(source) is not False:
+                    raise PasswordProtectedError(source, getattr(app, "Name", "engine")) from None
+                raise OpenFailedError(source, "engine", _short_exc(exc)) from None
+            if not _looks_like_arg_mismatch(exc):
+                raise
+            doc = docs.Open(source)  # minimal fallback for engines that reject named args
+
+        try:
+            try:
+                doc.SaveAs2(target, FileFormat=wd_format)
+            except Exception as exc:
+                if not _looks_like_arg_mismatch(exc):
+                    raise
+                doc.SaveAs(target, wd_format)  # older engines without SaveAs2
+        finally:
+            try:
+                doc.Close(WD_DO_NOT_SAVE_CHANGES)
+            except Exception:
+                pass
+
     # -- per-engine worker (runs inside the try above) ----------------------
 
     def _open_and_read(self, app: Any, engine_name: str, path: str) -> dict[str, Any]:
@@ -294,7 +441,9 @@ class OfficeEngine:
             )
         except Exception as exc:
             if _looks_encrypted(exc):
-                raise PasswordProtectedError(path, engine_name) from None
+                if file_claims_encrypted(path) is not False:
+                    raise PasswordProtectedError(path, engine_name) from None
+                raise OpenFailedError(path, engine_name, _short_exc(exc)) from None
             if not _looks_like_arg_mismatch(exc):
                 raise
             doc = docs.Open(path)  # minimal fallback for engines that reject named args

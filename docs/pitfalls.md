@@ -62,3 +62,82 @@ lockfile + (sometimes) a read-only attribute. But a read-only *attribute*
 alone also denies write handles — so `is_locked` must exclude the
 attribute case before calling it "open elsewhere", and the owner-lockfile
 name is truncated to 8+3 legacy (`report.doc` → `~$port.doc`).
+
+## 8. A poisoned PYTHONPATH explodes only at the compiled layer — and popping
+## the env var in conftest is not enough
+
+Dev boxes with a global `PYTHONPATH` (this one injects the Hermes install)
+look healthy until two venvs both ship the same package: the foreign
+site-packages sits **ahead of the project venv in `sys.path`**, pure-Python
+imports silently shadow (mcp, pydantic), and then `pydantic_core` dies with
+`ModuleNotFoundError` on a binary `.pyd` version mismatch — far away from
+the actual mistake.
+
+Two traps that cost an afternoon:
+
+- `os.environ.pop("PYTHONPATH")` **cannot save the parent pytest process**:
+  the paths were already expanded into `sys.path` at interpreter startup.
+  The env var and the `sys.path` entries must be scrubbed separately.
+- `StdioServerParameters(env=...)` does not help either — the import dies
+  in the *pytest parent*, before any child server is spawned.
+
+Fix (`tests/conftest.py`): pop the env var (children then inherit a clean
+environment) AND filter every PYTHONPATH entry out of `sys.path` (the
+parent then imports its own venv). Both, once, before any test module
+imports `mcp`.
+
+## 9. A corrupt file can pop a MODAL dialog through COM — headless is a lie
+### (and every in-COM defense fails somewhere)
+
+Feeding a structurally broken file to `Documents.Open` via COM can raise a
+**modal "file is corrupt" dialog** on the user's desktop — even though your
+app is headless and `DisplayAlerts = 0`. Empirical scorecard on a fake-zip
+`.docx`:
+
+| defense | result |
+|---|---|
+| `DisplayAlerts = 0` | dialog still appears |
+| `Application.FileValidation = 1` (wdFileValidationSkip) | **88 s hang** on WPS — the skip path itself stalls |
+| `Open(..., PasswordDocument="wrong-pw")` | 3 s clean error on Word; on **WPS the dynamic dispatch explodes with `AttributeError` on the unknown kwarg and the app object dies** (next call: RPC_S_SERVER_UNAVAILABLE) |
+| **validate the container in pure Python BEFORE COM** (`engine/container_guard.py`) | **modal is physically impossible — the engine never sees the trash** |
+
+Only the last one is portable across Word and WPS, and it is the only one
+that cannot regress with a new Office version. When a "password" error
+does arrive, trust it only if the container could actually be encrypted
+(check the OLE2 FIB fEncrypted bit at offset 0x0A); otherwise it is Word
+misjudging corruption as encryption — report OPEN_FAILED, not
+"ask the user for the password".
+
+**Rule: `Documents.Open` is a window into the user's desktop. Anything
+you can decide without the engine, decide without the engine.**
+
+## 10. `Word.Application` may not be Word — ProgID hijacking on WPS machines
+
+On a machine with WPS Office but no MS Word, the `Word.Application` ProgID
+can be **registered by WPS** ( compat takeover). Every COM probe then
+"succeeds with Word" while `'Kingsoft WPS'` sits in the `com_error`
+source. Two consequences:
+
+- Never trust `engine == "word"` for reporting unless you verified the
+  binary, not just the ProgID.
+- Machine-wide (`HKLM`) registry probing misses per-user WPS installs:
+  check `HKCU\Software\Classes\<ProgID>` too, or your "is WPS available?"
+  test says no while WPS works fine.
+
+## 11. git-bash heredocs feeding `python -` can hang forever
+
+`uv run python <<'EOF' ... EOF` from git-bash/MSYS on Windows may deliver
+stdin in a way `python -` never sees EOF for — the process hangs past its
+own logic with zero output (and stdout redirected to a file shows nothing
+because of block buffering). Write the script to a real file and run it;
+add `flush=True` to progress prints. Same box: PowerShell's `$_` is eaten
+by git-bash too — put PowerShell logic in a `.ps1` file instead.
+
+## 12. WPS's `Documents.Open` rejects RELATIVE paths with a bare failure
+
+Hand WPS a relative path (`examples\\dir\\a.doc`) while your server's cwd
+is perfectly correct and it fails with `文档打开失败` (error 3010) — the
+same call with an absolute path succeeds. Word tolerates relative paths;
+WPS does not. Rule: **`Path(...).expanduser().resolve()` every path at the
+engine boundary**, before it can reach COM. The server's cwd is an
+implementation detail the engine must never depend on.

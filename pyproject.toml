@@ -11,6 +11,7 @@ dependencies = [
     "mcp>=1.2,<2",
     # pywin32: pinned <312 — 312+ breaks MCP tool discovery in the Hermes
     # venv on this machine; 311 is fine for COM automation.
+    "olefile>=0.47",
     "pywin32>=306,<312",
 ]
 

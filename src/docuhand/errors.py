@@ -86,6 +86,10 @@ class FileLockedError(DocuhandError):
         )
 
 
+class InvalidParamError(DocuhandError):
+    error_code = "INVALID_PARAM"
+
+
 class EngineUnavailableError(DocuhandError):
     error_code = "ENGINE_UNAVAILABLE"
 
