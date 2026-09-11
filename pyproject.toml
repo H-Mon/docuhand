@@ -1,0 +1,35 @@
+[project]
+name = "docuhand"
+version = "0.1.0.dev1"
+description = "Give your AI agent hands to operate real Word & WPS documents on Windows — an MCP server driving real Office apps via COM."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    # MCP SDK: stay on 1.x — 2.x removed streamablehttp_client and broke
+    # HTTP MCP clients (lesson learned in a constrained virtualenv, a release-candidate build).
+    "mcp>=1.2,<2",
+    # pywin32: pinned <312 — 312+ breaks MCP tool discovery in the Hermes
+    # venv on this machine; 311 is fine for COM automation.
+    "pywin32>=306,<312",
+]
+
+[project.scripts]
+docuhand = "docuhand.server:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/docuhand"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = '-m "not com"'
+markers = [
+    "com: integration tests that drive real Word/WPS via COM (run locally with -m com, never in CI)",
+]
