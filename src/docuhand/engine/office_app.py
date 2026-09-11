@@ -28,7 +28,7 @@ from ..errors import (
     OpenFailedError,
     PasswordProtectedError,
 )
-from .container_guard import validate_container
+from .container_guard import detect_encryption, validate_container
 
 # --- pure helpers (unit-testable, zero COM) -------------------------------
 
@@ -263,11 +263,14 @@ class OfficeEngine:
             )
 
         size = p.stat().st_size
-        # Pre-COM gate (same rationale as convert_document): a broken
-        # container can trigger a modal corrupt-file dialog in Word/WPS.
+        # Pre-COM gates (same rationale as convert_document): broken
+        # containers trigger a modal corrupt-file dialog; encrypted files
+        # trigger a modal password prompt — both hang a headless call.
         ok, reason = validate_container(str(p))
         if not ok:
             raise OpenFailedError(str(p), "container pre-check", f"structurally invalid container: {reason}")
+        if detect_encryption(str(p)):
+            raise PasswordProtectedError(str(p), "container pre-check")
         with open(p, "rb") as f:
             head = f.read(1024)
         detected = sniff_format(head)
@@ -340,9 +343,11 @@ class OfficeEngine:
 
         if not src.exists():
             raise FileNotFoundError(str(src))
-        # Pre-COM gate: a structurally broken container can pop a MODAL
+        # Pre-COM gates: (1) structurally broken containers can pop a MODAL
         # "file is corrupt" dialog inside Word/WPS (DisplayAlerts=0 does
-        # NOT suppress it). Reject it here, before any COM call.
+        # NOT suppress it); (2) encrypted files pop a modal password prompt
+        # that hangs a headless COM call. Both are decided here, without
+        # the engine, so the engine only ever sees files it can open.
         ok, reason = validate_container(str(src))
         if not ok:
             raise OpenFailedError(
@@ -350,6 +355,8 @@ class OfficeEngine:
                 "container pre-check",
                 f"structurally invalid container: {reason}",
             )
+        if detect_encryption(str(src)):
+            raise PasswordProtectedError(str(src), "container pre-check")
         if src.resolve() == dst.resolve():
             raise DocuhandError(
                 f"Source and target are the same file: {src}",

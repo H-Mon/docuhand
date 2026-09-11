@@ -108,3 +108,59 @@ def validate_container(path: str) -> tuple[bool, str]:
     # (Verified: Word opens truncated-OLE2 as text-repair silently, and
     # plain garbage as an encoded-text recovery — neither prompts.)
     return True, ""
+
+
+# --- encryption pre-flight ---------------------------------------------------
+
+_ENCRYPTED_OOXML_STREAMS = ("encryptedpackage", "encryptedsummaryinformation")
+
+
+def _fib_is_encrypted(stream_head: bytes) -> bool:
+    """FIB check on the first bytes of a WordDocument stream.
+
+    FibBase layout: wIdent must be 0xA5EC (little-endian ``EC A5``); the
+    flags word lives at stream offset 0x0A and **fEncrypted = 0x0100**.
+    (Gotcha recorded in docs/pitfalls.md #9: the FIB is at the start of
+    the WordDocument *stream* — file offset 0x0A is the CFB header's
+    CLSID, and the bit is 0x0100, not 0x0001.)
+    """
+    if len(stream_head) < 12 or stream_head[0:2] != b"\xec\xa5":
+        return False
+    flags = int.from_bytes(stream_head[0x0A:0x0C], "little")
+    return bool(flags & 0x0100)
+
+
+def detect_encryption(path: str) -> bool:
+    """True → the document will demand a password from any engine.
+
+    Two container-level tells, both deterministic and COM-free:
+    - OOXML-style encryption: an OLE2 CFB carrying an ``EncryptedPackage``
+      stream (Word's "Encrypt with password" on a .docx produces exactly
+      this — the file stops being a zip).
+    - Legacy .doc: the FIB inside the WordDocument stream has fEncrypted
+      set (see :func:`_fib_is_encrypted`).
+
+    Non-OLE2 containers (zip/rtf/text) cannot carry a COM password request
+    → False. Parse trouble → False: validate_container already rejects
+    structurally broken files before this runs.
+    """
+    p = Path(path)
+    try:
+        with open(p, "rb") as f:
+            head = f.read(8)
+    except OSError:
+        return False
+    if head[:8] != OLE2_MAGIC:
+        return False
+    try:
+        if not olefile.isOleFile(p):
+            return False
+        with olefile.OleFileIO(p) as ole:
+            names = {entry[-1].lower() for entry in ole.listdir() if entry}
+            if names.intersection(_ENCRYPTED_OOXML_STREAMS):
+                return True
+            if "worddocument" not in names:
+                return False
+            return _fib_is_encrypted(ole.openstream("WordDocument").read(16))
+    except Exception:
+        return False
