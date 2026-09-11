@@ -198,6 +198,7 @@ class OfficeEngine:
         self._app: Any = None
         self._engine_name: str | None = None
         self._progid: str | None = None
+        self._engine_version: str = ""  # e.g. "16.0" (Word) / "11.1.0.1" (WPS)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -206,6 +207,7 @@ class OfficeEngine:
         self._app = None
         self._engine_name = None
         self._progid = None
+        self._engine_version = ""
 
     def shutdown(self) -> None:
         """Quit the app — must run on the engine's own STA (via submit)."""
@@ -248,6 +250,10 @@ class OfficeEngine:
         self._app = app
         self._engine_name = engine_name
         self._progid = progid
+        try:
+            self._engine_version = str(app.Version)  # field diagnostics
+        except Exception:
+            self._engine_version = ""
         return app
 
     def inspect_document(self, path: str) -> dict[str, Any]:
@@ -307,6 +313,7 @@ class OfficeEngine:
             info["tool"] = "inspect_document"
             info["path"] = str(p)
             info["engine"] = engine_name
+            info["engine_version"] = self._engine_version
             info["format"] = {
                 "extension": extension or None,
                 "detected": detected,
@@ -391,6 +398,7 @@ class OfficeEngine:
                 "source": str(src),
                 "target": str(dst),
                 "engine": engine_name,
+                "engine_version": self._engine_version,
                 "duration_ms": round((time.perf_counter() - t0) * 1000),
             }
 
