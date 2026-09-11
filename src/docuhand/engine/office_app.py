@@ -425,9 +425,13 @@ class OfficeEngine:
             try:
                 doc.SaveAs2(target, FileFormat=wd_format)
             except Exception as exc:
-                if not _looks_like_arg_mismatch(exc):
+                # Word 2007 and older have no SaveAs2 at all: late binding
+                # raises AttributeError at attribute access (not a call
+                # TypeError) — so the net must catch AttributeError too.
+                if isinstance(exc, AttributeError) or _looks_like_arg_mismatch(exc):
+                    doc.SaveAs(target, wd_format)  # pre-2010 engines
+                else:
                     raise
-                doc.SaveAs(target, wd_format)  # older engines without SaveAs2
         finally:
             try:
                 doc.Close(WD_DO_NOT_SAVE_CHANGES)
