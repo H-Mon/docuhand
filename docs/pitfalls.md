@@ -205,3 +205,33 @@ matter for JSON output). Verified against a round-tripped legacy `.doc`:
 `DispatchEx` launches inside one process can hard-segfault the second
 WPS instance (access violation in win32com) — probe scripts must reuse
 one app instance with a sentinel document.
+
+## 16. WPS 12 auto-uploads any file the engine OPENS to its cloud —
+## including your test fixtures
+
+On a default WPS 12 install with a logged-in account
+(`HKCU\Software\Kingsoft\wpscloud :: uploadFile = true`), every document
+the COM engine merely **opens** (even READ-ONLY, even from %TEMP%, no
+SaveAs needed) gets silently pushed to the user's WPS cloud drive — it
+then shows up in 传输助手 as "已上传". Verified experimentally:
+
+- plain `SaveAs2` from a 10-line script → uploaded in ≤5 s
+- COM `Documents.Open(ReadOnly=True)`, zero writes → uploaded
+- pure file copy (WPS never touches it) → NOT uploaded
+
+So the trigger is the OPEN, not the write, and it is not specific to
+DocuHand — any script (or Word-if-installed equivalent workflow) driving
+this engine family uploads. Consequences for an automation tool:
+
+1. **Test fixtures must be synthetic** — ours are (see
+   `scripts/make_demo_docs.py`). Never point DocuHand at documents you
+   would not hand to WPS Cloud.
+2. For privacy-sensitive environments, disable cloud sync machine-wide:
+   WPS 配置工具 → 备份中心/云同步 off, or
+   `HKCU\Software\Kingsoft\wpscloud: uploadFile=false`,
+   `DesktopSync=false`, `SpecifyFolderSync=false`, then kill `wpscloudsvr.exe`.
+3. THREAT-MODEL note: a local-execution promise ("documents never leave
+   your machine") is bounded by the engine's own cloud behavior. DocuHand
+   can and should SAY this: if your WPS is logged in with cloud sync on,
+   WPS — not DocuHand — may copy opens to the cloud. Surface it in the
+   security README section.
