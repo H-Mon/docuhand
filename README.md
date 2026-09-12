@@ -16,6 +16,10 @@ believed to be unique among Office MCP servers.)
 uvx docuhand serve
 ```
 
+Security posture: **zero network code** (audited — see
+[THREAT-MODEL.md](THREAT-MODEL.md)): no telemetry, no update checks, a
+local JSONL audit log, and an explicit non-goals section.
+
 ## Why DocuHand exists
 
 Most Office MCP servers are built on `python-docx` — they manipulate XML in
