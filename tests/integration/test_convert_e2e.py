@@ -39,7 +39,12 @@ def _wps_registered() -> bool:
 
 
 def _make_office_dir(parent: Path, variants: int, start_index: int = 1) -> Path:
-    """Synthetic mixed .doc/.docx fixtures via real Word COM (no real data)."""
+    """Synthetic mixed .doc/.docx fixtures via real Word COM (no real data).
+
+    Follows the pitfall #14 survival rules on WPS-as-Word: sentinel doc
+    pinned for the whole loop, Save() before every Close(0), best-effort
+    Quit.
+    """
     import pythoncom
     import win32com.client
 
@@ -49,8 +54,9 @@ def _make_office_dir(parent: Path, variants: int, start_index: int = 1) -> Path:
         word = win32com.client.DispatchEx("Word.Application")
         word.Visible = False
         word.DisplayAlerts = 0
+        pin = word.Documents.Add()  # sentinel: app must outlive the working doc
+        doc = word.Documents.Add()
         try:
-            doc = word.Documents.Add()
             for i in range(start_index, start_index + variants):
                 ext = "doc" if i % 2 == 1 else "docx"
                 doc.Content.Text = (
@@ -61,9 +67,18 @@ def _make_office_dir(parent: Path, variants: int, start_index: int = 1) -> Path:
                     str(parent / f"fixture_{i:02d}.{ext}"),
                     FileFormat=(0 if ext == "doc" else 16),
                 )
+            doc.Save()
             doc.Close(0)
+            del doc
         finally:
-            word.Quit(0)
+            try:
+                pin.Close(0)
+            except Exception:
+                pass
+            try:
+                word.Quit(0)
+            except Exception:
+                pass
     finally:
         pythoncom.CoUninitialize()
     return parent

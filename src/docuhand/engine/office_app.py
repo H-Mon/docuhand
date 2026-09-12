@@ -29,6 +29,27 @@ from ..errors import (
     PasswordProtectedError,
 )
 from .container_guard import detect_encryption, validate_container
+from .templating import (
+    _FillOutcome,
+    _fill_open_document,
+    _final_far_east_sweep,
+    _has_cjk,
+)
+from .com_utils import (
+    _g,
+    _looks_encrypted,
+    _looks_like_arg_mismatch,
+    _short_exc,
+    file_claims_encrypted,
+)
+from .pdf_plan import parse_page_range  # noqa: F401  (re-exported for tools layer)
+from .wd_constants import (
+    WD_ALERTS_NONE,
+    WD_DO_NOT_SAVE_CHANGES,
+    WD_EXPORT_ALL_DOCUMENT,
+    WD_EXPORT_FORMAT_PDF,
+    WD_EXPORT_FROM_TO,
+)
 
 # --- pure helpers (unit-testable, zero COM) -------------------------------
 
@@ -405,6 +426,307 @@ class OfficeEngine:
         if launch_failures == len(order):
             raise EngineUnavailableError(attempts)
         raise OpenFailedError(str(src), "word→wps failover exhausted", "; ".join(a["error"] for a in attempts))
+
+    # -- fill_document / export_pdf (D6–D8) ---------------------------------
+
+    def fill_document(
+        self,
+        template: str,
+        output: str,
+        data: dict[str, str],
+        mode: str = "auto",
+        bookmark_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Fill one template → one output document. Same failover contract.
+
+        Opens the template read-only (the template itself is never touched),
+        mutates the in-memory copy, applies the NameFarEast final sweep, then
+        SaveAs2 to the output path.
+        """
+        t0 = time.perf_counter()
+        src = Path(template).expanduser().resolve()
+        dst = Path(output).expanduser().resolve()
+        if not src.exists():
+            raise FileNotFoundError(str(src))
+        ok, reason = validate_container(str(src))
+        if not ok:
+            raise OpenFailedError(str(src), "container pre-check", f"structurally invalid container: {reason}")
+        if detect_encryption(str(src)):
+            raise PasswordProtectedError(str(src), "container pre-check")
+
+        order = self._engine_order()
+        attempts: list[dict[str, str]] = []
+        launch_failures = 0
+
+        for engine_name, progid in order:
+            try:
+                app = self._ensure_app(progid, engine_name)
+            except Exception as exc:
+                launch_failures += 1
+                attempts.append({"engine": engine_name, "stage": "launch", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+            try:
+                outcome = self._open_fill_save(
+                    app, str(src), str(dst), data, mode, bookmark_names or []
+                )
+            except PasswordProtectedError:
+                raise
+            except Exception as exc:
+                attempts.append({"engine": engine_name, "stage": "fill", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+
+            payload: dict[str, Any] = {
+                "ok": True,
+                "template": str(src),
+                "output": str(dst),
+                "engine": engine_name,
+                "engine_version": self._engine_version,
+                "duration_ms": round((time.perf_counter() - t0) * 1000),
+                "mode": mode,
+            }
+            payload.update(
+                {
+                    "filled_keys": sorted(set(outcome.filled)),
+                    "missing_keys": sorted(set(outcome.missing)),
+                    "content_controls_filled": sorted(set(outcome.controls_ok)),
+                    "content_controls_failed": sorted(set(outcome.controls_bad)),
+                    "leftover_placeholders": outcome.leftovers,
+                    "bookmarks_in_template": outcome.bookmarks_seen,
+                    "output_size_bytes": dst.stat().st_size if dst.exists() else None,
+                }
+            )
+            return payload
+
+        if launch_failures == len(order):
+            raise EngineUnavailableError(attempts)
+        raise OpenFailedError(str(src), "word→wps failover exhausted", "; ".join(a["error"] for a in attempts))
+
+    def export_pdf(self, path: str, output: str, page_from: int | None, page_to: int | None) -> dict[str, Any]:
+        """Export print-fidelity PDF via the real layout engine.
+
+        Uses ExportAsFixedFormat (Word ≥ 2007 SP2, WPS supports it) with a
+        SaveAs(FileFormat=17) fallback for exotic engines. Source document
+        is opened read-only and never modified.
+        """
+        t0 = time.perf_counter()
+        src = Path(path).expanduser().resolve()
+        dst = Path(output).expanduser().resolve()
+        if not src.exists():
+            raise FileNotFoundError(str(src))
+        ok, reason = validate_container(str(src))
+        if not ok:
+            raise OpenFailedError(str(src), "container pre-check", f"structurally invalid container: {reason}")
+        if detect_encryption(str(src)):
+            raise PasswordProtectedError(str(src), "container pre-check")
+
+        order = self._engine_order()
+        attempts: list[dict[str, str]] = []
+        launch_failures = 0
+
+        for engine_name, progid in order:
+            try:
+                app = self._ensure_app(progid, engine_name)
+            except Exception as exc:
+                launch_failures += 1
+                attempts.append({"engine": engine_name, "stage": "launch", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+            try:
+                self._open_export_pdf(app, str(src), str(dst), page_from, page_to)
+            except PasswordProtectedError:
+                raise
+            except Exception as exc:
+                attempts.append({"engine": engine_name, "stage": "export", "error": _short_exc(exc)})
+                self._discard_app()
+                continue
+
+            if not dst.exists():
+                raise OpenFailedError(str(src), engine_name, "export reported success but no PDF was written")
+            return {
+                "ok": True,
+                "source": str(src),
+                "output": str(dst),
+                "engine": engine_name,
+                "engine_version": self._engine_version,
+                "page_range": None if page_from is None else (str(page_from) if page_from == page_to else f"{page_from}-{page_to}"),
+                "output_size_bytes": dst.stat().st_size,
+                "pdf_verified": self._pdf_header_ok(dst),
+                "duration_ms": round((time.perf_counter() - t0) * 1000),
+            }
+
+        if launch_failures == len(order):
+            raise EngineUnavailableError(attempts)
+        raise OpenFailedError(str(src), "word→wps failover exhausted", "; ".join(a["error"] for a in attempts))
+
+    @staticmethod
+    def _pdf_header_ok(path: Path) -> bool:
+        try:
+            with open(path, "rb") as f:
+                return f.read(5) == b"%PDF-"
+        except OSError:
+            return False
+
+    def _open_export_pdf(
+        self,
+        app: Any,
+        source: str,
+        target: str,
+        page_from: int | None,
+        page_to: int | None,
+    ) -> None:
+        docs = app.Documents
+        try:
+            doc = docs.Open(
+                FileName=source,
+                ConfirmConversions=False,
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                Visible=False,
+            )
+        except Exception as exc:
+            if _looks_encrypted(exc):
+                if file_claims_encrypted(source) is not False:
+                    raise PasswordProtectedError(source, getattr(app, "Name", "engine")) from None
+                raise OpenFailedError(source, "engine", _short_exc(exc)) from None
+            if not _looks_like_arg_mismatch(exc):
+                raise
+            doc = docs.Open(source)
+
+        try:
+            if page_from is not None:
+                export_range, wd_from, wd_to = WD_EXPORT_FROM_TO, page_from, page_to or page_from
+            else:
+                export_range, wd_from, wd_to = WD_EXPORT_ALL_DOCUMENT, 1, 1
+            try:
+                doc.ExportAsFixedFormat(
+                    OutputFileName=target,
+                    ExportFormat=WD_EXPORT_FORMAT_PDF,
+                    OpenAfterExport=False,
+                    OptimizeFor=0,  # wdExportOptimizeForPrint — print fidelity
+                    Range=export_range,
+                    From=wd_from,
+                    To=wd_to,
+                    Item=0,  # wdExportDocumentContent
+                    IncludeDocProps=True,
+                    KeepIRM=True,
+                    CreateBookmarks=0,
+                    DocStructureTags=True,
+                    BitmapMissingFonts=True,
+                    UseISO19005_1=False,
+                )
+            except Exception as exc:
+                if isinstance(exc, AttributeError) or _looks_like_arg_mismatch(exc):
+                    # minimal-signature fallback (old Word / WPS variants)
+                    doc.SaveAs(target, WD_EXPORT_FORMAT_PDF)  # 17 == wdFormatPDF
+                else:
+                    raise
+        finally:
+            try:
+                doc.Close(WD_DO_NOT_SAVE_CHANGES)
+            except Exception:
+                pass
+
+    # -- merge_documents (D13–D14) --------------------------------------------
+
+    def merge_one(
+        self,
+        template: str,
+        output: str,
+        data: dict[str, str],
+    ) -> dict[str, Any]:
+        """Fill one row into the template → output. Thin wrapper over the
+        fill pipeline in 'placeholders+bookmarks' auto mode; raises on
+        engine failure (the batch layer catches and isolates per row)."""
+        result = self.fill_document(template, output, data, mode="auto", bookmark_names=None)
+        problems = result.get("missing_keys") or result.get("leftover_placeholders")
+        if problems:
+            # per-row fidelity matters in a merge: report, don't hide
+            result["row_warning"] = {
+                "missing_keys": result.get("missing_keys") or [],
+                "leftover_placeholders": result.get("leftover_placeholders") or [],
+            }
+        return result
+
+    def _open_fill_save(
+        self,
+        app: Any,
+        source: str,
+        target: str,
+        data: dict[str, str],
+        mode: str,
+        bookmark_names: list[str],
+    ) -> _FillOutcome:
+        docs = app.Documents
+        try:
+            doc = docs.Open(
+                FileName=source,
+                ConfirmConversions=False,
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                Visible=False,
+            )
+        except Exception as exc:
+            if _looks_encrypted(exc):
+                if file_claims_encrypted(source) is not False:
+                    raise PasswordProtectedError(source, getattr(app, "Name", "engine")) from None
+                raise OpenFailedError(source, "engine", _short_exc(exc)) from None
+            if not _looks_like_arg_mismatch(exc):
+                raise
+            doc = docs.Open(source)
+
+        try:
+            outcome = _fill_open_document(doc, data, mode, bookmark_names)
+            _final_far_east_sweep(doc)
+            # wdFormatXMLDocument = 16 for .docx, wdFormatDocument = 0 for .doc
+            wd_format = 0 if target.lower().endswith(".doc") else 16
+            try:
+                doc.SaveAs2(target, FileFormat=wd_format)
+            except Exception as exc:
+                if isinstance(exc, AttributeError) or _looks_like_arg_mismatch(exc):
+                    doc.SaveAs(target, wd_format)
+                else:
+                    raise
+            # SaveAs2 itself can reset NameFarEast on the (already-saved) doc;
+            # re-assert once more so the SAVED bytes carry correct EA fonts.
+            _final_far_east_sweep(doc)
+            try:
+                doc.Save()
+            except Exception:
+                pass  # older engines may not allow Save after SaveAs — best effort
+            return outcome
+        finally:
+            try:
+                doc.Close(WD_DO_NOT_SAVE_CHANGES)
+            except Exception:
+                pass
+
+    def _open_read_only(self, app: Any, source: str) -> Any:
+        """Open a document read-only in the given app; raise structured errors.
+
+        Shared by every engine flow. Handles the password-misclassification
+        guard and the positional-arg fallback for engines that reject named
+        arguments (docs/pitfalls.md #13 family).
+        """
+        docs = app.Documents
+        try:
+            doc = docs.Open(
+                FileName=source,
+                ConfirmConversions=False,
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                Visible=False,
+            )
+        except Exception as exc:
+            if _looks_encrypted(exc):
+                if file_claims_encrypted(source) is not False:
+                    raise PasswordProtectedError(source, getattr(app, "Name", "engine")) from None
+                raise OpenFailedError(source, "engine", _short_exc(exc)) from None
+            if not _looks_like_arg_mismatch(exc):
+                raise
+            doc = docs.Open(source)  # minimal fallback for engines that reject named args
+        return doc
 
     def _open_and_save_as(self, app: Any, source: str, target: str, wd_format: int) -> None:
         docs = app.Documents

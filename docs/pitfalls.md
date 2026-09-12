@@ -155,3 +155,53 @@ with an old-engine fallback (`SaveAs2→SaveAs`, `ContentControls`→nothing,
 present but rejects the signature). Many deployed machines still run
 routinely still run Win7 + Office 2007/2010 — treat 2007 as a supported
 floor until the field data says otherwise.
+
+## 14. `Find.Execute(Replace:=wdReplaceAll)` returns True and replaces
+## NOTHING on WPS-as-Word
+
+On this engine family (WPS 12 masquerading as `Word.Application`,
+reporting `Name = "Microsoft Word"`, `Version = 12.0`), the one-call
+`Find.Execute(FindText=..., ReplaceWith=..., Replace=2)` completes
+**successfully** (returns True) yet the text is unchanged. No error, no
+dialog — the Replacement is silently dropped. The portable recipe (probe-
+verified on both the hijacked Word ProgID and real `KWPS.Application`):
+
+```python
+# per hit: FRESH story range + fresh Find, find-only, then set range text
+while True:
+    f = doc.Content.Find          # fresh Range + Find every iteration
+    f.ClearFormatting()
+    f.Forward = True
+    f.Wrap = 1                    # wdFindContinue
+    if not f.Execute(token):      # find ONLY — never pass Replace here
+        break
+    f.Parent.Text = value         # Parent IS the matched range
+```
+
+Subtleties that each cost a probe cycle:
+- Reusing one `Find` object across hits stops after the **first**
+  replacement (its internal range state is consumed by the hit).
+- A fresh `Find` from a *shared* Range object gets 2 of 3 — only a fresh
+  `doc.Content` per iteration is reliable.
+- `Wrap=0` (wdFindStop) under-counts; `Wrap=1` (continue) finds all.
+- A value that contains its own token would loop forever — cap iterations
+  and never interpolate data into `FindText`.
+- Same family trait: an un-saved doc's `Close()` can kill the whole app
+  instance (RPC_S_SERVER_UNAVAILABLE on the next property access) when the
+  instance is headless with zero documents. Keep a sentinel doc open
+  across multi-step scripts, `doc.Save()` before `Close(0)` when the doc
+  was just created, and treat `Quit` as best-effort (pitfall #2).
+
+## 15. `Cell.Text` does not exist on WPS-as-Word — read cells via
+## `Cell.Range.Text`
+
+Reading table cells with `table.Cell(r, c).Text` — the snippet every
+tutorial shows — raises `AttributeError: Cell.Text` on this engine
+family. The portable read is one indirection deeper:
+`table.Cell(r, c).Range.Text`, which returns the cell content with a
+`\r\x07` end-of-cell marker — strip `\x07` and `\r` (markdown-free cells
+matter for JSON output). Verified against a round-tripped legacy `.doc`:
+2×3 grid with CJK + decimal values reads back byte-perfect. Also: two
+`DispatchEx` launches inside one process can hard-segfault the second
+WPS instance (access violation in win32com) — probe scripts must reuse
+one app instance with a sentinel document.

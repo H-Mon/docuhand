@@ -151,5 +151,52 @@ class ComCallTimeoutError(DocuhandError):
         )
 
 
+class ReadOnlyError(DocuhandError):
+    error_code = "SERVER_READ_ONLY"
+
+    def __init__(self, tool: str) -> None:
+        super().__init__(
+            f"Server runs in read-only mode (DOCUHAND_READONLY); '{tool}' was blocked",
+            llm_hint=(
+                "The user locked this server to read-only operation. Only "
+                "inspect_document and extract_content are available. To allow "
+                "writes the user must remove DOCUHAND_READONLY from the server "
+                "config and restart it. Do not retry the same tool."
+            ),
+            details={"tool": tool},
+        )
+
+
+class TemplateFillError(DocuhandError):
+    error_code = "TEMPLATE_FILL_INCOMPLETE"
+
+    def __init__(self, path: str, detail: str, missing: list[str] | None = None) -> None:
+        super().__init__(
+            f"Template fill finished with problems: {path}",
+            llm_hint=(
+                "Check 'details.missing_keys' / 'details.problems'. Missing "
+                "bookmark keys mean the template lacks that bookmark — remove "
+                "the key from data or fix the template. Leftover {{placeholders}} "
+                "usually mean the data key spelling differs from the template."
+            ),
+            details={"path": path, "detail": detail, "missing_keys": missing or []},
+        )
+
+
+class EngineDeadError(DocuhandError):
+    error_code = "ENGINE_DIED"
+
+    def __init__(self, engine: str, com_error: str) -> None:
+        super().__init__(
+            f"The {engine} engine died mid-operation (RPC crash)",
+            llm_hint=(
+                "This engine instance crashed — the next call automatically "
+                "relaunches it (or fails over to the other engine). Retry once "
+                "before reporting a problem."
+            ),
+            details={"engine": engine, "com_error": com_error},
+        )
+
+
 class InternalError(DocuhandError):
     error_code = "INTERNAL_ERROR"
