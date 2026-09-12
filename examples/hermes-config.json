@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "docuhand": {
-      "command": "D:/Repositories/docuhand/.venv/Scripts/pythonw.exe",
-      "args": ["-m", "docuhand"]
+      "command": "docuhand",
+      "args": ["serve"]
     }
   }
 }
