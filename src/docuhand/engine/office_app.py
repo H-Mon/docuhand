@@ -58,7 +58,10 @@ ZIP_MAGIC = b"PK\x03\x04"
 FILE_ATTRIBUTE_READONLY = 0x1
 
 FRIENDLY_FORMATS = {
-    "ole2": "legacy .doc (OLE2 Compound File)",
+    # The container, not the product. HWP 5.0 (Korean) and other legacy
+    # word-processor formats share the same OLE2 compound container, so
+    # naming one of them here would misreport every other one.
+    "ole2": "OLE2 compound file (legacy .doc / HWP family)",
     "zip": "zip / OOXML (.docx family)",
     "rtf": "RTF",
     "html": "HTML",
@@ -69,6 +72,11 @@ FRIENDLY_FORMATS = {
 _EXT_TO_FORMAT = {
     ".doc": "ole2",
     ".dot": "ole2",
+    # HWP 5.0 (Hancom, Korea) uses the same OLE2 compound container as
+    # legacy .doc. HWP 3.x predates it and sniffs as "unknown" - correctly
+    # reported as an extension mismatch. HWPX is the open XML-in-zip format.
+    ".hwp": "ole2",
+    ".hwpx": "zip",
     ".docx": "zip",
     ".dotx": "zip",
     ".rtf": "rtf",

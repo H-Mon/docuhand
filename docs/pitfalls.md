@@ -274,3 +274,50 @@ The fix enumerates the ROT and prefers an instance that actually has
 Always fail *soft* here: if ROT enumeration raises for any reason, fall
 back to the ProgID lookup rather than propagating.
 
+
+---
+
+## 18. WPS supports multiple independent instances — but concurrency caps at ~1.5x
+
+Measured on this machine (WPS only, no Word) while scoping the Pro
+"batch queue / concurrency" feature.
+
+**What works.** WPS happily hosts several independent `Application`
+instances. Each one holds its own document, sees no other instance's
+documents, and survives concurrent writes:
+
+- 4 independent `ComWorker` + `OfficeEngine` pairs, each opening its own
+  file: 4/4 succeeded, each engine reported `Documents.Count == 1` and a
+  distinct document name at the same moment
+- 4 concurrent `.doc` -> `.docx` conversions: 4/4 succeeded, all four
+  outputs were valid docx, sources unmodified
+- the same workers reused for a second batch: no leak
+- office processes during the run: `wps.exe` x 8 (4 engines, each with
+  child processes); back to 0 after shutdown — no zombies
+
+**What does NOT work.** The speedup is nowhere near the worker count:
+
+| workers | wall (24 files) | per file | speedup |
+|---|---|---|---|
+| 1 | 24.6s | 1124 ms | 1.00x |
+| 2 | 19.6s | 776 ms | 1.46x |
+| 4 | 19.3s | 767 ms | 1.48x |
+
+Concurrency **saturates at two workers**; a third and fourth buy nothing.
+Pre-warming every engine first changes the numbers by almost nothing, so
+this is not a launch-cost artefact — WPS serialises internally somewhere
+(most likely a single-instance registry entry or a shared resource lock).
+
+**Do not market this as "N times faster".** ~1.5x is what it is. The value
+of a background queue is "you do not have to watch it", not throughput.
+
+**Two traps when testing this yourself:**
+
+- Every COM call must go through `worker.submit(...)`. The engine object is
+  STA-affine; calling `engine.inspect_document()` straight from a test
+  thread fails with `RPC_E_WRONG_THREAD` and the engine reports
+  `EngineUnavailableError` — which reads like "no Office installed" and is
+  not.
+- `ComWorker` and `OfficeEngine` are module-level singletons in
+  `engine/__init__.py`. Multi-instance means instantiating your own pairs,
+  not reusing `get_engine()`.
