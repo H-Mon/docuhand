@@ -262,6 +262,33 @@ uv run pytest tests/unit
 uv run pytest tests -m com
 ```
 
+### Publication gates
+
+This repository is public, so a mistake in a commit is a mistake anyone
+can find - and in the history, which is where it stays. Two hooks check for
+that before it leaves the machine:
+
+```bash
+bash scripts/install_precommit_hook.sh
+```
+
+- **pre-commit** scans the staged diff and refuses a commit that would
+  publish a real identity, a machine-specific path, a client detail, or a
+  regional package mirror.
+- **pre-push** re-scans every tracked file before anything reaches a
+  public remote, because a commit is local and reversible while a push is
+  not.
+
+The rules are in `scripts/precommit_gate.py`; `scripts/publish_gate.py`
+does the same job for outward-facing text, where there is no commit to
+hook into. Both allow technical wording on purpose - "Chinese-Windows",
+"CJK", "East-Asian", `NameFarEast` describe the platform this tool
+supports, not who uses it.
+
+If a check is wrong, fix the rule rather than bypassing it:
+`git commit --no-verify` works, but the gate prints what it would have
+blocked.
+
 ## License
 
 MIT. Free core, forever. Pro is a separate commercial license, later.
