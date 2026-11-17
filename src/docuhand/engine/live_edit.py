@@ -38,9 +38,72 @@ WD_DO_NOT_SAVE_CHANGES = 0
 WD_SAVE_CHANGES = -1
 
 
+def _rot_word_apps() -> list[Any]:
+    """Every Word/KWPS instance registered in the Running Object Table.
+
+    ``Dispatch("Word.Application")`` returns *one* registration — and after a
+    crashed-or-quit engine leaves a stale zero-document instance behind
+    (pitfall #2), that registration is frequently NOT the one holding the
+    user's visible documents. Enumerating the ROT and keeping every
+    candidate lets the caller pick the instance that actually has documents.
+    """
+    apps: list[Any] = []
+    try:
+        rot = pythoncom.GetRunningObjectTable()
+        ctx = pythoncom.CreateBindCtx(0)
+        enum = rot.EnumRunning()
+        while True:
+            monikers = enum.Next(1)
+            if not monikers:
+                break
+            for moniker in monikers:
+                app = _app_from_moniker(rot, moniker)
+                if app is not None:
+                    apps.append(app)
+    except Exception:
+        # ROT enumeration is best-effort; the ProgID fallback below still works.
+        pass
+    return apps
+
+
+def _app_from_moniker(rot: Any, moniker: Any) -> Any | None:
+    """Bind a ROT moniker to a Word/WPS Application, or None if it isn't one.
+
+    ``rot.GetObject(moniker)`` is the only pywin32 shape that works here:
+    ``moniker.BindToObject`` rejects the CLSID moniker with
+    ``E_INVALIDARG`` and ``PyIMoniker`` has no ``GetObject``.
+    """
+    try:
+        unk = rot.GetObject(moniker)
+        disp = unk.QueryInterface(pythoncom.IID_IDispatch)
+        app = win32com.client.Dispatch(disp)
+    except Exception:
+        return None
+    # WPS impersonates Word's ProgID, so the Name is not a reliable filter;
+    # instead require that the object exposes a Documents collection.
+    try:
+        int(app.Documents.Count)
+    except Exception:
+        return None
+    return app
+
+
 def _attach_running_app() -> Any:
-    """Attach to the user's running Word/WPS instance (ROT lookup)."""
+    """Attach to the user's running Word/WPS instance (ROT lookup).
+
+    Prefers an instance that actually holds open documents: a stale
+    zero-document registration must never shadow the live one (see
+    docs/pitfalls.md #17).
+    """
     pythoncom.CoInitialize()
+    candidates = _rot_word_apps()
+    # Prefer instances that already have documents open.
+    with_docs = [a for a in candidates if int(_g(lambda a=a: a.Documents.Count, 0) or 0) > 0]
+    if with_docs:
+        return with_docs[0]
+    if candidates:
+        return candidates[0]
+    # ROT enumeration found nothing usable — fall back to the ProgID lookup.
     try:
         return win32com.client.Dispatch("Word.Application")
     except Exception:

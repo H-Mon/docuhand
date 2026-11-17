@@ -235,3 +235,41 @@ this engine family uploads. Consequences for an automation tool:
    can and should SAY this: if your WPS is logged in with cloud sync on,
    WPS — not DocuHand — may copy opens to the cloud. Surface it in the
    security README section.
+
+## 17. A stale ROT registration makes the user's OPEN document
+## unreachable — `Dispatch` returns the wrong instance
+
+`edit_open_document` attaches to the engine the user is actually running.
+It used to do that with `win32com.client.Dispatch("Word.Application")`,
+which resolves to **one** Running-Object-Table registration. Problem: the
+ROT can hold **several** `Word.Application` registrations at once, and a
+stale one — a headless `DispatchEx` instance whose `Quit()` died (pitfall
+#2) — sits in front of the live one.
+
+Observed on WPS 12 (2026-11-17), reproduced deliberately:
+
+```
+# GUI has save_probe.docx open
+GetActiveObject("Word.Application").Documents.Count  ->  0   # the STALE one
+ROT enumeration                                     ->  4 instances
+```
+
+With the stale instance first, `_resolve_document` raised
+`Document not found among the 0 open document(s)` — a **misleading**
+error, because the document *was* open. The user would reasonably think
+their file had not been opened, and would re-open it, and it would still
+fail.
+
+The fix enumerates the ROT and prefers an instance that actually has
+`Documents.Count > 0`. Two implementation notes, both required:
+
+- `moniker.BindToObject(ctx, None, IID_IDispatch)` **fails** on the Word
+  CLSID moniker with `E_INVALIDARG (-2147024809)`. The working shape is
+  `rot.GetObject(moniker)` → `unk.QueryInterface(IID_IDispatch)`.
+  (`PyIMoniker` has no `GetObject` method of its own.)
+- WPS impersonates Word's ProgID, so `Application.Name` cannot be used to
+  filter candidates. Filter on "exposes a `Documents` collection" instead.
+
+Always fail *soft* here: if ROT enumeration raises for any reason, fall
+back to the ProgID lookup rather than propagating.
+

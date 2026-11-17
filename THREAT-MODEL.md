@@ -5,7 +5,7 @@ This document describes what it protects, what it explicitly does **not**
 protect, and the evidence behind every claim — written for security
 reviewers and cautious operators deciding whether to run it.
 
-Scope: `v0.1.0.dev1` / `main`, audited 2026-09-12. File references point at
+Scope: `v0.1.0` / `main`, audited 2026-11-17. File references point at
 the tag; there are no `src/` changes between the tag and `main`.
 
 ---
@@ -92,15 +92,16 @@ third-party code. Findings for `v0.1.0.dev1`:
 - **Zero network code in `src/`** — no `socket`, `requests`, `httpx`,
   `urllib`, `http.client` imports; no `subprocess`; no `os.system`; no `eval`.
 - **Zero hardcoded URLs in `src/`** — the 386 URLs in the repository
-  (counted 2026-09-12) resolve
+  (counted 2026-11-17) resolve
   exclusively to: `uv.lock` package pins (`pypi.org` /
   `files.pythonhosted.org`), README/CHANGELOG documentation links, and
   `.gitignore` template comments.
 - **No hardcoded credentials** — every `password` string in source is
   password-*detection* logic (the pre-COM encryption gates).
-- **No git dependencies, no author forks** — all 99 locked packages (as
-  locked on 2026-09-12) come from PyPI: `mcp>=1.2,<2`, `olefile>=0.47`,
-  `pywin32>=306,<312`, plus
+- **No git dependencies, no author forks** — all 38 locked packages (as
+  locked on 2026-11-17) come from PyPI: `mcp>=1.2,<2` (locked 1.30.0),
+  `olefile>=0.47` (locked 0.47),
+  `pywin32>=306,<312` (locked 311), plus
   transitive dependencies.
 - **No post-install scripts, no prebuilt binaries** — the repository contains
   no binary artifacts; distributions are built from source with `uv build`

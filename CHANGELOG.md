@@ -5,9 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) (loosely);
 versions follow [Semantic Versioning](https://semver.org/) (pre-1.0: the
 minor slot is the API surface).
 
-## [0.1.0.dev1] - 2026-09-12
+## [0.1.0] - 2026-11-17
 
-First public pre-release. The complete v0.1 tool set:
+First public release. The complete v0.1 tool set:
 
 ### Added
 - `inspect_document` — pre-flight health check: true format vs extension,
@@ -20,7 +20,7 @@ First public pre-release. The complete v0.1 tool set:
 - `fill_template` — bookmarks / `{{placeholders}}` / content controls in
   `auto` mode; CJK font protection (`NameFarEast` re-assertion before and
   after `SaveAs2`); leftover-placeholder scan; per-key fill report.
-- `export_pdf` — print-fidelity PDF via `ExportAsFixedFormat` with a
+- `export_pdf` — PDF via `ExportAsFixedFormat` with a
   `SaveAs(pdf)` fallback for older engines; page-range grammar
   (`all` | `7` | `3-9`); `%PDF-` header verification.
 - `extract_content` — `text` / `tables` (row-major JSON grids from legacy
@@ -38,5 +38,13 @@ First public pre-release. The complete v0.1 tool set:
   timeout-abandon semantics; Word→WPS engine probe/failover; structured
   errors (`error_code` / `human_message` / `llm_hint`); Chinese-Windows
   UTF-8 stdio fix; pure-logic planning modules unit-tested in CI.
-- Documentation: `docs/pitfalls.md` — 15 battle-tested pitfalls from
-  hands-on debugging on real machines.
+- Documentation: `docs/pitfalls.md` — 17 battle-tested pitfalls from
+  hands-on debugging on real Chinese-Windows machines.
+
+### Fixed
+- `edit_open_document` no longer attaches to the wrong engine instance.
+  A stale zero-document registration left in the Running Object Table
+  (e.g. after a crashed engine) used to shadow the user's live instance,
+  producing a misleading `Document not found among the 0 open document(s)`.
+  The attach path now enumerates the ROT and prefers an instance that
+  actually holds open documents. See `docs/pitfalls.md` #17.

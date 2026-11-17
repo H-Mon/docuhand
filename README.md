@@ -4,11 +4,11 @@
 
 DocuHand is a Model Context Protocol (MCP) server that lets AI agents
 (Claude Desktop, Hermes, Cursor, any MCP client) actually *drive* Microsoft
-Word and WPS Office via COM — not just read docx XML, but automate the real
+Word and WPS Office via COM: not just read docx XML, but automate the real
 applications: legacy `.doc` binaries, documents currently open on screen,
-and print-fidelity PDF export through the word processor's own layout engine.
+and PDF export through the word processor's own layout engine.
 
-Works on **both** Microsoft Word and WPS Office — when Word is absent or
+Works on **both** Microsoft Word and WPS Office. When Word is absent or
 crashes mid-batch, the WPS engine takes over transparently. (WPS support is
 believed to be unique among Office MCP servers.)
 
@@ -16,25 +16,27 @@ believed to be unique among Office MCP servers.)
 uvx docuhand serve
 ```
 
-Security posture: **zero network code** (audited — see
+Security posture: **zero network code** (audited; see
 [THREAT-MODEL.md](THREAT-MODEL.md)): no telemetry, no update checks, a
 local JSONL audit log, and an explicit non-goals section.
 
 ## Why DocuHand exists
 
-Most Office MCP servers are built on `python-docx` — they manipulate XML in
+Most Office MCP servers are built on `python-docx`: they manipulate XML in
 idealized files. Real-world documents are not idealized:
 
 - 20-year-old `.doc` binaries that XML libraries cannot touch
 - Files currently **open and locked** in Word/WPS right now
-- WPS Office — the default suite for hundreds of millions of users
+- WPS Office — Kingsoft reported **676 million** WPS Office monthly active
+  devices in June 2026, so the "default suite" problem is not a niche
 - CJK fonts that silently reset when text is replaced (the `NameFarEast` trap)
 - Password-protected and corrupt files that pop **modal dialogs** and hang
   headless servers
 
-DocuHand drives the real applications, hardened by hands-on debugging on real machines. Every pitfall in
-[docs/pitfalls.md](docs/pitfalls.md) cost real debugging time — you get them
-pre-solved.
+DocuHand drives the real applications, hardened by hands-on debugging on
+real Chinese-Windows machines. Every pitfall in
+[docs/pitfalls.md](docs/pitfalls.md) cost real debugging time, and you get
+them pre-solved.
 
 ## Tools
 
@@ -43,13 +45,13 @@ pre-solved.
 | `inspect_document` | Pre-flight health check: real format vs extension, lock state, page/word counts, corruption & password detection, bookmarks, field codes |
 | `convert_documents` | Batch `.doc ↔ .docx` for a whole directory in one call, Word→WPS failover, per-file fault isolation, sources never deleted |
 | `fill_template` | Bookmarks / `{{placeholders}}` / content controls, CJK fonts protected through save |
-| `export_pdf` | Print-fidelity PDF via the real layout engine, optional page range |
+| `export_pdf` | PDF via the real layout engine, optional page range |
 | `extract_content` | Text / tables (as JSON grids) / heading outline from legacy `.doc` |
 | `edit_open_document` | Edit a document the user **has open right now** — changes appear in their window |
 | `merge_documents` | Mail-merge style batch generation: one template × N data rows |
 
 Every tool returns structured JSON. Every error carries
-`{error_code, human_message, llm_hint}` — errors are data the agent reads to
+`{error_code, human_message, llm_hint}`: errors are data the agent reads to
 self-correct, not tracebacks it drowns in.
 
 ## Quick start
@@ -65,8 +67,20 @@ uv tool install docuhand
 ```
 
 Requirements: **Windows** with either Microsoft Word or WPS Office installed
-(either one is enough — the engine probes `Word.Application` first, then
-`KWPS.Application`, overridable with `DOCUHAND_ENGINE=wps|word`).
+(either one is enough; the engine probes `Word.Application` first, then
+`KWPS.Application`, overridable with `DOCUHAND_ENGINE=wps|word`), and
+**Python 3.12 or newer** (the package requires `>=3.12`; on older
+interpreters pip reports `from versions: none`).
+
+It runs with **your own user privileges**: no admin rights, no service
+install, no daemon. It does not run on Linux or macOS: it drives the real
+Office engine through COM.
+
+**Test coverage:** the development machine has **WPS Office only, no
+Microsoft Word**. Every end-to-end verification in this repository ran on
+that machine; the Word-side code paths are the one thing not yet verified
+against real Word. If you run on Word and hit a difference, please open an
+issue, because that is exactly the gap worth closing.
 
 Add to your MCP client (Claude Desktop example):
 
@@ -134,10 +148,10 @@ filtered environment.
 
 ## Why not just use Copilot in Word / WPS AI?
 
-Those are copilots — they serve the *person sitting in front of the
+Those are copilots: they serve the *person sitting in front of the
 document*, through a closed, human-driven interface with no public API.
-DocuHand is ground crew: it serves *agents working unattended* — batch jobs
-at 3 AM, pipelines, any MCP client. Different buyer, different mode of
+DocuHand is ground crew: it serves *agents working unattended*, from batch
+jobs at 3 AM to pipelines, on any MCP client. Different buyer, different mode of
 operation.
 
 **"Why operate legacy .doc files at all?"**
@@ -146,7 +160,7 @@ are locked by compliance
 (retain-original requirements), ecosystem inertia (counterparties still
 sending `.doc`), and sheer scale. Converting them *is* one of our tools.
 Copilot can't touch them; python-docx can't either. Manual clerical work or
-DocuHand — those are the options.
+DocuHand: those are the options.
 
 ## DocuHand vs. XML-level Office tools
 
@@ -161,14 +175,14 @@ DocuHand — those are the options.
 
 ## Architecture notes
 
-The short version of the six decisions that make this survive real machines
+The short version of the four decisions that make this survive real machines
 (full rationale in [docs/pitfalls.md](docs/pitfalls.md)):
 
-- **One dedicated STA thread** owns all COM — the asyncio event loop must
+- **One dedicated STA thread** owns all COM: the asyncio event loop must
   never touch COM directly (`RPC_E_WRONG_THREAD`), and one serial queue
   means no WINWORD.EXE instance explosion. A stuck call times out and the
   thread is abandoned wholesale.
-- **Word → WPS failover** — an engine that dies mid-call is discarded and
+- **Word → WPS failover**: an engine that dies mid-call is discarded and
   the next one takes over; probe order is configurable.
 - **Errors are structured data** for the calling agent, not stack traces.
 - **Safety is registration-time middleware**, not "remember to check".
@@ -195,4 +209,4 @@ uv run pytest tests -m com
 
 ## License
 
-MIT — free core, forever. Pro is a separate commercial license, later.
+MIT. Free core, forever. Pro is a separate commercial license, later.

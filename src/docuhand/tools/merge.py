@@ -1,7 +1,7 @@
 """merge_documents — one template × N data rows → N filled files.
 
-Mail-merge style batch generation - one template, N data rows, N filled
-rebuilt as a product tool). Per-row fault isolation: one bad row fails
+Mail-merge style batch generation — one template, N data rows, N filled
+documents. Per-row fault isolation: one bad row fails
 alone and the batch continues — the convert_documents survival guarantee,
 applied to generation.
 """

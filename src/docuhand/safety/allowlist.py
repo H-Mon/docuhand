@@ -2,8 +2,8 @@
 
 ``DOCUHAND_ALLOWLIST``: os.pathsep-separated absolute directories.
 Empty/absent (the v0.1 default) = allow everything: the user launches the
-server themselves, which per spec IS the explicit consent ("默认：用户显式
-传入的目录"). Setting the env var locks the server to those subtrees.
+server themselves, which per spec IS the explicit consent. Setting the env
+var locks the server to those subtrees.
 """
 
 from __future__ import annotations

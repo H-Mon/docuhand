@@ -1,6 +1,6 @@
 [project]
 name = "docuhand"
-version = "0.1.0.dev1"
+version = "0.1.0"
 description = "Give your AI agent hands to operate real Word & WPS documents on Windows — an MCP server driving real Office apps via COM."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,9 +9,10 @@ dependencies = [
     # MCP SDK: stay on 1.x — 2.x removed streamablehttp_client and broke
     # HTTP MCP clients (lesson learned in a constrained virtualenv, a release-candidate build).
     "mcp>=1.2,<2",
+    # OLE2 compound-file reader — used for the pre-COM encryption sniff.
+    "olefile>=0.47",
     # pywin32: pinned <312 — 312+ breaks MCP tool discovery in the Hermes
     # venv on this machine; 311 is fine for COM automation.
-    "olefile>=0.47",
     "pywin32>=306,<312",
 ]
 

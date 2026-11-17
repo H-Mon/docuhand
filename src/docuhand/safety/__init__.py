@@ -1,6 +1,7 @@
 """Safety layer: allowlist enforcement + JSONL audit log.
 
 Per the original design decision this is structural (registered around every
+tool),
 not a "remember to call it" convention.
 """
 
