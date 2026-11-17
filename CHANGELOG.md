@@ -19,7 +19,7 @@ minor slot is the API surface).
 ## [Unreleased]
 
 ### Documentation
-- `docs/pitfalls.md`: three new entries from migrating a real Chinese
+- `docs/pitfalls.md`: three new entries from migrating data between two
   templates of the same form — #19 (WPS resolves `Font.Name`
   to a *different* East-Asian face; the fix is to leave `NameFarEast`
   empty, not to set it), #20 (merged cells throw on column indexing,

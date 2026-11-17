@@ -327,8 +327,8 @@ of a background queue is "you do not have to watch it", not throughput.
 
 ## 19. WPS maps `Font.Name` to a *different* East-Asian face — set `NameFarEast` explicitly
 
-Found the hard way on a real Chinese form. The template wanted "宋体"
-(SimSun) at 14pt. The script set exactly that:
+Found the hard way on a real form. The template wanted "宋体" (SimSun) at
+14pt. The script set exactly that:
 
 ```python
 rng.Font.Name = "宋体"
@@ -383,9 +383,9 @@ makes the document worse rather than better.
 
 ## 20. Four shape traps in real fill-in forms
 
-Every one of these came from migrating a real personnel-approval form — a
-templates of the same kind of form. They are not hypothetical; each one broke the output at least
-once.
+Every one of these came from migrating data between two templates of the
+same kind of form. They are not hypothetical; each one broke the output at
+least once.
 
 ### 20.1 A merged cell cannot be addressed by column index
 
