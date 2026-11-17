@@ -1,6 +1,6 @@
 [project]
 name = "docuhand"
-version = "0.1.0"
+version = "0.1.1"
 description = "Give your AI agent hands to operate real Word & WPS documents on Windows — an MCP server driving real Office apps via COM."
 readme = "README.md"
 requires-python = ">=3.12"

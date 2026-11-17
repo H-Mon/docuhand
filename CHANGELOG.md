@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) (loosely);
 versions follow [Semantic Versioning](https://semver.org/) (pre-1.0: the
 minor slot is the API surface).
 
+## [0.1.1] - 2026-11-17
+
+### Fixed
+- `docuhand.__version__` reported the wrong value. The version literal
+  lived in two places - `pyproject.toml` and `src/docuhand/__init__.py` -
+  and only the first was updated at release time, so the `0.1.0` wheel on
+  PyPI reported `0.1.0.dev1` to `import docuhand`. The version is now
+  read from the installed distribution's metadata, with the literal kept
+  out of the source entirely, and `tests/unit/test_version.py` locks the
+  two together.
+
 ## [Unreleased]
 
 ### Documentation
