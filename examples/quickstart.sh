@@ -14,10 +14,10 @@ BASE="https://raw.githubusercontent.com/H-Mon/docuhand/main/examples/demo-files"
 # prompt we print. Prefer USERPROFILE only if we are on Windows.
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
-        # cygpath -m gives a native Windows path (C:/Users/x). curl is a
-        # native Windows binary and does NOT understand /c/Users/... - it
-        # fails with "client returned ERROR on write". So the download path
-        # must stay in native form.
+        # cygpath -m gives a native Windows path; cygpath -u gives an MSYS
+        # one. curl is a native Windows binary and does NOT understand MSYS
+        # paths - it fails with "client returned ERROR on write". So the
+        # download path must stay in native form.
         DEMO_DIR_NATIVE="$(cygpath -m "${USERPROFILE:-}")/docuhand-demo"
         DEMO_DIR="$(cygpath -u "${USERPROFILE:-}")/docuhand-demo"
         ;;
