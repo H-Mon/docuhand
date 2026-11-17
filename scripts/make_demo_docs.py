@@ -32,6 +32,17 @@ TEXT = [
     (WD_STYLE_NORMAL, "The document carries a bookmark, a field code and multiple paragraphs so inspect_document has something real to report."),
 ]
 
+# The table below is the whole point of the tool: batch-filling tabular data
+# out of legacy .doc files is the workflow DocuHand was built for. A demo
+# without a table would show an empty extract and teach the wrong lesson.
+TABLE_ROWS = [
+    ["Item", "Qty", "Unit Price", "Total"],
+    ["Widget A", "12", "3.50", "42.00"],
+    ["Widget B", "7", "11.25", "78.75"],
+    ["Widget C", "3", "0.99", "2.97"],
+]
+TABLE_HEADER = "Section 3: Table (the actual use case)"
+
 
 def main() -> int:
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,6 +59,19 @@ def main() -> int:
             sel.TypeParagraph()
         doc.Bookmarks.Add("DemoBookmark", doc.Paragraphs(2).Range)
         doc.Fields.Add(doc.Paragraphs(1).Range, 33)  # 33 = wdFieldFileName
+
+        # A real table, so extract_content(tables) has something to return.
+        sel.Style = doc.Styles(WD_STYLE_HEADING2)
+        sel.TypeText(TABLE_HEADER)
+        sel.TypeParagraph()
+        sel.Style = doc.Styles(WD_STYLE_NORMAL)
+        table = doc.Tables.Add(sel.Range, len(TABLE_ROWS), len(TABLE_ROWS[0]))
+        for r, row in enumerate(TABLE_ROWS, start=1):
+            for c, value in enumerate(row, start=1):
+                table.Cell(r, c).Range.Text = value
+        table.Style = "Table Grid"
+        sel.EndKey(6)  # wdStory = 6, move past the table
+        sel.TypeParagraph()
 
         docx_path = DEMO_DIR / "DocuHand_Demo.docx"
         doc.SaveAs2(str(docx_path), FileFormat=WD_FORMAT_DOCX)
