@@ -383,8 +383,8 @@ makes the document worse rather than better.
 
 ## 20. Four shape traps in real fill-in forms
 
-Every one of these came from migrating a real personnel-approval form between two
-templates. They are not hypothetical; each one broke the output at least
+Every one of these came from migrating a real personnel-approval form — a
+templates of the same kind of form. They are not hypothetical; each one broke the output at least
 once.
 
 ### 20.1 A merged cell cannot be addressed by column index
