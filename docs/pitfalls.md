@@ -153,8 +153,8 @@ with an old-engine fallback (`SaveAs2→SaveAs`, `ContentControls`→nothing,
 `OpenNoRepairDialog`→`Open`), the fallback must catch **both**
 `AttributeError` (method absent) and the arg-mismatch family (method
 present but rejects the signature). Many deployed machines still run
-routinely still run Win7 + Office 2007/2010 — treat 2007 as a supported
-floor until the field data says otherwise.
+Win7 + Office 2007/2010 — treat 2007 as a supported floor until the field
+data says otherwise.
 
 ## 14. `Find.Execute(Replace:=wdReplaceAll)` returns True and replaces
 ## NOTHING on WPS-as-Word

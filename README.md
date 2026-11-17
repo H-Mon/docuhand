@@ -155,10 +155,9 @@ jobs at 3 AM to pipelines, on any MCP client. Different buyer, different mode of
 operation.
 
 **"Why operate legacy .doc files at all?"**
-Nobody *chooses* legacy formats. Archives of millions of `.doc` files in
-are locked by compliance
-(retain-original requirements), ecosystem inertia (counterparties still
-sending `.doc`), and sheer scale. Converting them *is* one of our tools.
+Nobody *chooses* legacy formats. Archives of millions of `.doc` files are locked
+by compliance (retain-original requirements), ecosystem inertia (counterparties
+still sending `.doc`), and sheer scale. Converting them *is* one of our tools.
 Copilot can't touch them; python-docx can't either. Manual clerical work or
 DocuHand: those are the options.
 
