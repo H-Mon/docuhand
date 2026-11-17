@@ -321,3 +321,196 @@ of a background queue is "you do not have to watch it", not throughput.
 - `ComWorker` and `OfficeEngine` are module-level singletons in
   `engine/__init__.py`. Multi-instance means instantiating your own pairs,
   not reusing `get_engine()`.
+
+
+---
+
+## 19. WPS maps `Font.Name` to a *different* East-Asian face — set `NameFarEast` explicitly
+
+Found the hard way on a real Chinese form. The template wanted "宋体"
+(SimSun) at 14pt. The script set exactly that:
+
+```python
+rng.Font.Name = "宋体"
+rng.Font.Size = 14
+```
+
+and WPS wrote **方正宋三简体** instead. The document looked wrong and
+nothing in the payload said why.
+
+**The mechanism** (measured, not guessed):
+
+| state | `Font.Name` | `Font.NameFarEast` |
+|---|---|---|
+| template, before any edit | 宋体 | *(empty — inherits the style)* |
+| after `rng.Text = "..."` | 宋体 | **方正宋三简体** |
+| after also setting `rng.Font.Name = "宋体"` | 宋体 | 宋体 ✅ |
+
+Replacing the text of a range makes the new run pick up the **style's**
+East-Asian font. The style is `正文`, whose `Font.NameFarEast` is 宋体 but
+whose Latin face is Times New Roman — and WPS resolves that pair to a
+different face when it materialises the run. Setting `Font.Name` afterwards
+fixes it, but only if you set it *after* the text write.
+
+**The trap in the obvious fix**: setting `Font.NameFarEast` explicitly
+(triggering it on purpose) is what made WPS substitute the font in the
+first place. The working recipe is the opposite of "be explicit" —
+
+```python
+rng.Text = new_text          # 1. write first
+rng.Font.Name = "宋体"        # 2. then the Latin/display face
+rng.Font.Size = 14
+# do NOT touch NameFarEast / NameAscii / NameOther
+```
+
+`Font.NameAscii` and `Font.NameOther` should stay empty too — the template
+leaves them empty on purpose, and populating them is what forces WPS down
+the substitution path.
+
+**Why this is not a "just set the font" problem**: the template itself does
+not spell out the font at the run level. It sets `Font.Name` once and lets
+`NameFarEast` inherit from the style. If you write the run explicitly, you
+have to reproduce that *absence* — not fill it in. Any script that "helpfully"
+sets all four font properties will look correct on Word and be wrong on WPS.
+
+This is the same class of bug as #5, one level deeper: the fix in #5
+(re-assert the East-Asian font after the save) is what surfaces here, and
+applying it naively to a font name that WPS already resolved differently
+makes the document worse rather than better.
+
+
+---
+
+## 20. Four shape traps in real fill-in forms
+
+Every one of these came from migrating a real personnel-approval form between two
+templates. They are not hypothetical; each one broke the output at least
+once.
+
+### 20.1 A merged cell cannot be addressed by column index
+
+`table.Cell(row, col)` **throws** when the cell is part of a merge — not
+returns empty, not returns the merged span. The reliable pattern is to probe
+and catch:
+
+```python
+for r in range(1, table.Rows.Count + 1):
+    for c in range(1, table.Columns.Count + 1):
+        try:
+            value = table.Cell(r, c).Range.Text
+        except Exception:
+            continue          # merged / non-existent cell
+```
+
+There is no "read the cell at (r, c)" API that survives merging. Probe
+everything and treat the exceptions as "no cell here".
+
+### 20.2 A vertical header cell returns one paragraph *per character*
+
+The first column of the family-relations table is set vertically — one
+character per line. The cell text comes back as **thirteen separate
+paragraphs**, not as a string with line breaks:
+
+```
+"家庭主要成员及重要社会关系"   →   13 paragraphs
+```
+
+Code that assumes `cell.Range.Text` is one string will index into the wrong
+paragraph, or concatenate them in the wrong order. Join paragraphs
+explicitly, and strip the trailing cell markers (`\r\x07`).
+
+### 20.3 The two templates are different shapes, and the fields are not the same fields
+
+| | source form | target form |
+|---|---|---|
+| table 1 | 10 rows × 7 columns | 13 rows × 6 columns |
+| relation field | 出生年月 (`1968.08`) | 年龄 (`58`) |
+
+So "copy the cell across" is **not** copying — it is *computing*: the value
+has to be derived from the source value against today's date. And the rows
+do not line up: the target has more relation rows than the source had. The
+rule the form asks for is *fill from the top down, and do not change the
+table's total height* — which means extra rows stay empty and the table's
+geometry must survive the write.
+
+Two forms with the same heading are not the same schema. Assume the target
+schema and read it explicitly; never assume "same table, same columns".
+
+### 20.4 Example values in the template are coloured — and you inherit that colour
+
+The template marks its example entries in **red** (RGB 255). Writing a
+value into that cell inherits the run colour, so the filled document comes
+out with red text in what should be black fields:
+
+```python
+rng.Text = value
+rng.Font.Color = 0          # explicit black — the template's colour is a hint, not a default
+```
+
+Colour in a template is often *meaning*, not decoration. It marks "this is
+an example, replace me". Any fill routine must set the colour explicitly
+rather than relying on whatever the cell happened to carry.
+
+### 20.5 Photos are `InlineShape`s with exact dimensions, and they live inside merged cells
+
+The photo in the source is `InlineShapes(1)`, 84.6 × 120.0 points, sitting
+in a merged cell. The target cell contains only the words "贴照片". Moving
+it means: read the shape out, insert it into the target cell's range, and
+keep the dimensions.
+
+Two traps here, both found by measurement:
+
+- **Row height**: setting `Row.HeightRule = wdRowHeightAuto` to make room
+  for the photo **changes the height of every other column in that row**.
+  Restore the template's original `Height` / `HeightRule` instead.
+- **Line spacing**: the photo's display inside a merged cell is governed by
+  the paragraph's `LineSpacingRule`, not by the row height. A fixed value
+  (`wdLineSpaceExactly`) **crops the image**. Set the photo paragraph to
+  single spacing so the image can expand, and leave the row height alone.
+
+The order matters: fix the spacing rule first, then re-check that the other
+columns in the row still show their original content.
+
+
+---
+
+## 21. Template example content lives in three different layers — and in the *same paragraph*
+
+A form template ships with placeholder content that must be gone by the end:
+a sample name, a sample birth year, a sample age, the instruction "leave
+blank, do not stamp", and the literal text "XX年XX月XX日".
+
+**Layer 1 — table cells.** The obvious place. Iterate every cell of every
+table.
+
+**Layer 2 — body paragraphs.** Plain paragraphs outside any table.
+
+**Layer 3 — shapes (text boxes).** The easy one to forget: the "本人意见：
+签名：日期：" block is a **Shape**, not a paragraph. Iterating
+`doc.Paragraphs` will never see it, and `doc.Shapes(i).TextFrame.TextRange`
+is the only way in.
+
+A cheap sweep that misses any of the three leaves visible garbage in the
+delivered document, and the recipient sees it before you do.
+
+### The nastiest part: two logical fields, one physical paragraph
+
+The signature lines for 初审人 and 复审人 live in **the same paragraph**:
+
+```
+P[202]: "初审人： 手写签字  复审人：  手写签字"
+```
+
+So the naive fix — replace the whole paragraph with text containing only
+the first label — **deletes the second field**. The replacement is
+correct in isolation and wrong in context.
+
+The rule this teaches: **do not do paragraph-level replacement when a
+paragraph can hold more than one logical field.** Either rewrite the
+paragraph preserving every field it contains, or operate on the *runs*
+inside it rather than the paragraph as a whole. When you must clear one
+field, clear that field's range — not its container.
+
+This is worth internalising beyond document processing: a container is not
+its contents, and most "replace the whole thing" helpers will happily
+delete a sibling that happened to share the address.

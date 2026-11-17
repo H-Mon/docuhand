@@ -5,6 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) (loosely);
 versions follow [Semantic Versioning](https://semver.org/) (pre-1.0: the
 minor slot is the API surface).
 
+## [Unreleased]
+
+### Documentation
+- `docs/pitfalls.md`: three new entries from migrating a real Chinese
+  templates of the same form — #19 (WPS resolves `Font.Name`
+  to a *different* East-Asian face; the fix is to leave `NameFarEast`
+  empty, not to set it), #20 (merged cells throw on column indexing,
+  vertical headers return one paragraph per character, source and target
+  forms can have different shapes and different field semantics, template
+  example values carry colour that you inherit, photos are `InlineShape`s
+  governed by line-spacing rather than row height), #21 (template example
+  content lives in table cells, body paragraphs *and* shapes — and two
+  logical fields can share one physical paragraph, so paragraph-level
+  replacement deletes a sibling).
+
 ## [0.1.0] - 2026-11-17
 
 First public release. The complete v0.1 tool set:
