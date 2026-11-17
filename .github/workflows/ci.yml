@@ -24,6 +24,26 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Run unit tests
         run: uv run pytest tests/unit -q
+      - name: Check the lock file points at the canonical index
+        # A regional mirror in a contributor's environment (UV_INDEX_URL,
+        # pip.conf, an OS-level mirror) must never leak into the published
+        # lock file: every other user would then resolve through it.
+        # NOTE: an environment variable overrides [tool.uv] index-url, so
+        # this CI check - not the pyproject setting - is the real guard.
+        run: |
+          $bad = @()
+          Get-Content uv.lock | ForEach-Object {
+            if ($_ -match 'registry\s*=\s*"(?<u>[^"]+)"' -and $Matches.u -notlike 'https://pypi.org/*') {
+              $bad += $Matches.u
+            }
+          }
+          $bad = $bad | Sort-Object -Unique
+          if ($bad) {
+            Write-Error "uv.lock references a non-canonical index: $($bad -join ', ')"
+            exit 1
+          }
+          Write-Host "uv.lock points at the canonical index."
+
       - name: Build distributions
         run: uv build
       - name: Check distributions

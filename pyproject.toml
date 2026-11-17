@@ -29,6 +29,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/docuhand"]
 
+[tool.uv]
+# Pin the public index. Without this, a developer whose environment sets
+# UV_INDEX_URL (or has a regional mirror configured) will have that mirror
+# written into uv.lock, and every other user then resolves through it.
+# The lock file is part of the published repository - it must always point
+# at the canonical index.
+index-url = "https://pypi.org/simple"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # A poisoned global PYTHONPATH (some dev boxes inject another venv) makes
