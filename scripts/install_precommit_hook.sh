@@ -30,3 +30,28 @@ HOOK_EOF
 
 chmod +x "$HOOK"
 echo "Installed: $HOOK"
+
+# --- also install the pre-push gate: a commit is local and reversible,
+# --- a push to a public remote is not.
+PUSH_HOOK="$HOOK_DIR/pre-push"
+cat > "$PUSH_HOOK" <<'PUSH_EOF'
+#!/bin/sh
+set -e
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GATE="$REPO_ROOT/scripts/precommit_gate.py"
+[ -f "$GATE" ] || exit 0
+PY=""
+for cand in python3 python py; do
+    command -v "$cand" >/dev/null 2>&1 && { PY="$cand"; break; }
+done
+[ -n "$PY" ] || exit 0
+REMOTE="$1"
+URL=$(git remote get-url "$REMOTE" 2>/dev/null || echo "")
+case "$URL" in
+    *github.com*|*gitlab.com*|*bitbucket.org*) ;;
+    *) exit 0 ;;
+esac
+"$PY" "$GATE" --repo "$REPO_ROOT" --all
+PUSH_EOF
+chmod +x "$PUSH_HOOK"
+echo "Installed: $PUSH_HOOK"

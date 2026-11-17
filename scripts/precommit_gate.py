@@ -54,9 +54,13 @@ BLOCKERS: list[tuple[str, str]] = [
     ("干部任免", "client's real document name"),
     ("干部人事档案", "client's real document name"),
 
-    # A regional mirror written into a committed lockfile.
+    # A regional mirror written into a committed lockfile.  The canonical
+    # hosts are pypi.org (index) and files.pythonhosted.org (artefacts) -
+    # anything else on those domains is a mirror.
     (r"pypi\.(?!org\b)[a-z0-9.-]+", "non-canonical PyPI mirror in a published file"),
-    (r"files\.pythonhosted\.org|files\.pythonhosted\.cn", "unexpected package host"),
+    (r"files\.pythonhosted\.(?!org\b)[a-z0-9.-]+", "non-canonical package host"),
+    (r"https?://(?!files\.pythonhosted\.org/)[a-z0-9.-]*pythonhosted\.[a-z]+/",
+     "non-canonical package host"),
 
     # Live credentials.
     (r"\b[pP]yPI[_ -]?(?:token|password)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}",
