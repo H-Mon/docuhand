@@ -75,8 +75,17 @@ SCENARIO_TERMS: list[tuple[str, str]] = [
     (r"appointment-and-dismissal", "names the client's document type"),
     (r"\bpublic sector\b", "names the client's sector"),
     (r"\bcivil servant", "names the client's sector"),
-    (r"\b人事档案\b", "names the client's sector"),
-    (r"\b政务\b", "names the client's sector"),
+    # NOTE: no \b here - CJK has no word boundaries, so \b never matches
+    # next to a Chinese character.  Substring matching is the correct tool.
+    ("人事档案", "names the client's sector"),
+    ("政务", "names the client's sector"),
+
+    # Job-role wording.  These do not name a sector directly, but combined
+    # with the rest of the story they reconstruct it.
+    (r"\bHer job is\b", "describes the person's job role"),
+    (r"\bshe inherits\b", "describes the person's job role"),
+    (r"\binherits a batch\b", "describes the person's job role"),
+    (r"\bher employer\b", "describes the person's job role"),
 ]
 
 # Terms that MUST survive.  Used only to report, never to block: if a future
@@ -95,6 +104,25 @@ SKIP_SUFFIXES = {".pyc", ".pyo", ".png", ".jpg", ".jpeg", ".gif", ".ico",
 # name the thing it forbids.  Without this exemption the gate blocks its own
 # commit and the first person to install it concludes the gate is broken.
 SELF_EXEMPT = {"scripts/precommit_gate.py", "scripts/install_precommit_hook.sh"}
+
+# Any file whose job is to define or test the rules necessarily contains the
+# strings the rules forbid - a rule has to spell out the thing it blocks.
+# Exempt by pattern rather than by an explicit list, so that adding a new
+# gate script does not require editing this one (and does not block its own
+# first commit, which is how a gate gets declared "broken").
+SELF_EXEMPT_PATTERNS = (
+    "precommit_gate.py",
+    "publish_gate.py",
+    "install_precommit_hook.sh",
+)
+
+
+def is_exempt(rel: str) -> bool:
+    norm = rel.replace("\\", "/")
+    name = Path(norm).name
+    return (norm in SELF_EXEMPT
+            or name in SELF_EXEMPT
+            or any(name == pat for pat in SELF_EXEMPT_PATTERNS))
 
 
 def run(cmd: list[str], cwd: Path) -> tuple[int, str]:
@@ -168,8 +196,7 @@ def main() -> int:
     if not staged:
         print("no staged changes - nothing to check.")
     for rel, added in staged.items():
-        norm = rel.replace("\\", "/")
-        if norm in SELF_EXEMPT or Path(norm).name in exempt_names:
+        if is_exempt(rel):
             continue
         findings.extend(scan_text(added, f"staged:{rel}"))
 
@@ -181,8 +208,7 @@ def main() -> int:
                 continue
             if Path(rel).suffix.lower() in SKIP_SUFFIXES:
                 continue
-            norm = rel.replace("\\", "/")
-            if norm in SELF_EXEMPT or Path(norm).name in {Path(s).name for s in SELF_EXEMPT}:
+            if is_exempt(rel):
                 continue
             fp = repo / rel
             if not fp.is_file():
