@@ -8,8 +8,8 @@ on:
 jobs:
   test:
     # Windows is the product's only platform: the dependency set includes
-    # pywin32 (Windows-only wheels — an ubuntu runner cannot even `uv sync`,
-    # which is why every ubuntu run on 2026-09-12 failed) and the tools under
+    # pywin32 (Windows-only wheels — an ubuntu runner cannot even `uv sync`)
+    # and the tools under
     # test drive Word/WPS via COM. Unit tests exercise pure logic; COM
     # integration tests (`-m com`) drive real engines and stay on the
     # maintainer's machine (docs/pitfalls.md).

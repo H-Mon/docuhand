@@ -1,8 +1,8 @@
 """End-to-end smoke test through a REAL MCP stdio client + REAL Word/WPS COM.
 
-This is exactly what Claude Desktop and other MCP hosts do: spawn the server as a
-subprocess, connect an MCP client over stdio, list tools, call
-inspect_document on real files. Marked `com` (local runs, not CI).
+This is exactly what a real MCP client does (Claude Desktop, Cursor, ...):
+spawn the server as a subprocess, connect an MCP client over stdio, list
+tools, call inspect_document on real files. Marked `com` (local runs, not CI).
 """
 
 import asyncio

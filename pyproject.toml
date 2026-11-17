@@ -6,13 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    # MCP SDK: stay on 1.x — 2.x removed streamablehttp_client and broke
-    # HTTP MCP clients (lesson learned in a constrained virtualenv, a release-candidate build).
+    # MCP SDK: stay on 1.x — 2.x removed streamablehttp_client, which broke
+    # HTTP MCP clients.
     "mcp>=1.2,<2",
     # OLE2 compound-file reader — used for the pre-COM encryption sniff.
     "olefile>=0.47",
-    # pywin32: pinned <312 — 312+ breaks MCP tool discovery in the Hermes
-    # venv on this machine; 311 is fine for COM automation.
+    # pywin32: pinned <312 — 312+ broke MCP tool discovery in one of the
+    # venvs tested; 311 is fine for COM automation.
     "pywin32>=306,<312",
 ]
 
@@ -31,7 +31,7 @@ packages = ["src/docuhand"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# A poisoned global PYTHONPATH (this dev box injects a constrained virtualenv) makes
+# A poisoned global PYTHONPATH (some dev boxes inject another venv) makes
 # a foreign venv's packages shadow our own via sys.path; tests/conftest.py
 # scrubs env + sys.path before any test imports mcp. The `com` marker keeps
 # COM integration tests out of the default run (`-m com` opts in).

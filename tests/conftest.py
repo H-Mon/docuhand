@@ -1,7 +1,7 @@
 """Pytest-wide environment hygiene — must run before test modules import mcp.
 
-Dev boxes sometimes export a global PYTHONPATH (this one injects the Hermes
-install). Two distinct poisons for this suite:
+Dev boxes sometimes export a global PYTHONPATH (some inject another tool's
+install directory). Two distinct poisons for this suite:
 
 1. Parent process: PYTHONPATH entries land in sys.path *before site-packages*,
    so a foreign venv's pure-Python packages (mcp, pydantic) shadow our own

@@ -3,8 +3,8 @@
 **Give your AI agent hands to operate real Word & WPS documents on Windows.**
 
 DocuHand is a Model Context Protocol (MCP) server that lets AI agents
-(Claude Desktop, Hermes, Cursor, any MCP client) actually *drive* Microsoft
-Word and WPS Office via COM: not just read docx XML, but automate the real
+(Claude Desktop, Cursor, and any other MCP client) actually *drive* Microsoft
+Word and WPS Office via COM — not just read docx XML, but automate the real
 applications: legacy `.doc` binaries, documents currently open on screen,
 and PDF export through the word processor's own layout engine.
 

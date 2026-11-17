@@ -33,11 +33,11 @@ engine state that lived on that thread.
 
 ## 4. Host MCP clients filter your subprocess environment
 
-Hermes (and other MCP hosts) pass stdio servers a **filtered** environment:
-only baseline vars (`PATH`, `SYSTEMROOT`, `APPDATA`, `TEMP`, ...) plus what
-you declare in the server's `env` config. COM survives this fine — but if
-your server needs anything else (e.g. an allowlist env var), it must be
-declared in the MCP server config, not assumed.
+MCP hosts (Claude Desktop, Cursor, and others) pass stdio servers a
+**filtered** environment: only baseline vars (`PATH`, `SYSTEMROOT`, `APPDATA`,
+`TEMP`, ...) plus what you declare in the server's `env` config. COM survives
+this fine — but if your server needs anything else (e.g. an allowlist env
+var), it must be declared in the MCP server config, not assumed.
 
 ## 5. GBK stdio is the invisible bomb on Chinese Windows
 
@@ -66,11 +66,12 @@ name is truncated to 8+3 legacy (`report.doc` → `~$port.doc`).
 ## 8. A poisoned PYTHONPATH explodes only at the compiled layer — and popping
 ## the env var in conftest is not enough
 
-Dev boxes with a global `PYTHONPATH` (this one injects the Hermes install)
-look healthy until two venvs both ship the same package: the foreign
-site-packages sits **ahead of the project venv in `sys.path`**, pure-Python
-imports silently shadow (mcp, pydantic), and then `pydantic_core` dies with
-`ModuleNotFoundError` on a binary `.pyd` version mismatch — far away from
+Dev boxes with a global `PYTHONPATH` (some of them inject a whole other
+tool's install directory) look healthy until two venvs both ship the same
+package: the foreign site-packages sits **ahead of the project venv in
+`sys.path`**, pure-Python imports silently shadow (mcp, pydantic), and then
+`pydantic_core` dies with `ModuleNotFoundError` on a binary `.pyd` version
+mismatch — far away from
 the actual mistake.
 
 Two traps that cost an afternoon:

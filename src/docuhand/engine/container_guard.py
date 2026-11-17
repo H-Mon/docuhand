@@ -1,6 +1,6 @@
 """Pre-COM container validation — the deterministic corrupt-file gate.
 
-Why this exists (found the hard way, 2026-09-11): handing a structurally
+Why this exists (found the hard way): handing a structurally
 broken file to Word/WPS via COM can pop a MODAL "file is corrupt" dialog.
 DisplayAlerts=0 does not suppress it; FileValidation=1 (the documented
 "skip validation" switch) made it WORSE on WPS: 88s hang vs 3s clean error
