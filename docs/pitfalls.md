@@ -299,7 +299,7 @@ documents, and survives concurrent writes:
 
 | workers | wall (24 files) | per file | speedup |
 |---|---|---|---|
-| 1 | 24.6s | 1124 ms | 1.00x |
+| 1 | 28.6s | 1124 ms | 1.00x |
 | 2 | 19.6s | 776 ms | 1.46x |
 | 4 | 19.3s | 767 ms | 1.48x |
 
